@@ -12,7 +12,6 @@
  * it's not good practice to ignore compiler warnings, but in this
  * case it's OK.  
  */
-
 #if 0
 /*
  * Instructions to Students:
@@ -140,7 +139,7 @@ NOTES:
  *   Rating: 1
  */
 int bitXor(int x, int y) {
-  return 2;
+  return ~((~(x & (~y))) & (~ ((~x) & y)));
 }
 /* 
  * tmin - return minimum two's complement integer 
@@ -149,7 +148,7 @@ int bitXor(int x, int y) {
  *   Rating: 1
  */
 int tmin(void) {
-  return 2;
+  return 1<<31;
 }
 //2
 /*
@@ -160,7 +159,7 @@ int tmin(void) {
  *   Rating: 2
  */
 int isTmax(int x) {
-  return 2;
+  return (!!(~x)) & (!(~(x ^ (x+1))));
 }
 /* 
  * allOddBits - return 1 if all odd-numbered bits in word set to 1
@@ -170,7 +169,10 @@ int isTmax(int x) {
  *   Rating: 2
  */
 int allOddBits(int x) {
-  return 2;
+  int mask8 = 0xaa;
+  int mask16 = mask8 | (mask8 << 8);
+  int mask32 = mask16 | (mask16 << 16);
+  return  !(~x & mask32);
 }
 /* 
  * negate - return -x 
@@ -180,7 +182,7 @@ int allOddBits(int x) {
  *   Rating: 2
  */
 int negate(int x) {
-  return 2;
+  return (~x)+1;
 }
 //3
 /* 
@@ -193,7 +195,12 @@ int negate(int x) {
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-  return 2;
+  int three_head = !(3 ^ (x >> 4));
+  int last_four_bits = x & 15;
+  int is_eight = !(last_four_bits ^ 8);
+  int is_nine = !(last_four_bits ^ 9);
+  int less_than_eight = !(last_four_bits >> 3);
+  return three_head & (is_eight | is_nine | less_than_eight);
 }
 /* 
  * conditional - same as x ? y : z 
@@ -203,7 +210,13 @@ int isAsciiDigit(int x) {
  *   Rating: 3
  */
 int conditional(int x, int y, int z) {
-  return 2;
+  int mask1 = !!x;
+  int mask2 = mask1 | (mask1 << 1);
+  int mask4 = mask2 | (mask2 << 2);
+  int mask8 = mask4 | (mask4 << 4);
+  int mask16 = mask8 | (mask8 << 8);
+  int mask32 = mask16 | (mask16 << 16);
+  return (y&mask32) + (z& (~mask32));
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -225,7 +238,12 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
-  return 2;
+  int x2 = x | (x >> 16);
+  int x4 = x2 | (x2 >> 8);
+  int x8 = x4 | (x4 >> 4);
+  int x16 = x8 | (x8 >> 2);
+  int x32 = x16 | (x16 >> 1);
+  return (x32&1) ^ 1;
 }
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
@@ -240,7 +258,14 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
-  return 0;
+  int n = 0;
+  x ^= (x<<1);
+  n += ((!!(x&((~0)<<(n+16)))) << 4);
+  n += ((!!(x&((~0)<<(n+8)))) << 3);
+  n += ((!!(x&((~0)<<(n+4)))) << 2);
+  n += ((!!(x&((~0)<<(n+2)))) << 1);
+  n += (!!(x&((~0)<<(n+1))));
+  return n+1;
 }
 //float
 /* 
@@ -255,7 +280,7 @@ int howManyBits(int x) {
  *   Rating: 4
  */
 unsigned float_twice(unsigned uf) {
-  return 2;
+  return uf + (1 <<23);
 }
 /* 
  * float_i2f - Return bit-level equivalent of expression (float) x
