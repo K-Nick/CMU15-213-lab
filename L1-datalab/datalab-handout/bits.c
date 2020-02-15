@@ -280,7 +280,36 @@ int howManyBits(int x) {
  *   Rating: 4
  */
 unsigned float_twice(unsigned uf) {
-  return uf + (1 <<23);
+  // 1 | 8 | 23
+  // you can use if but not operations like ==
+  //extreme case: zero, denorm2denorm, denorm2norm, norm2inf, inf2inf
+  // printf("INPUT:\t%.8x\n", uf);
+  //zero
+  if (!uf)  return 0U;
+  unsigned sign_bit = uf >> 31;
+  unsigned exp_bits = (uf << 1) >> 24;
+  unsigned frac_bits = (uf << 9) >> 9;
+  unsigned denorm_bits = 0;
+  unsigned inf_bits = (unsigned)((1<<31) >> 8) >> 24;
+  unsigned close2inf_bits = inf_bits ^ 1;
+
+  if (!(exp_bits ^ denorm_bits)) {
+    if (!(frac_bits & (1 << 22))) {
+      //denorm2denorm
+      return (sign_bit << 31) | (exp_bits << 23) | (frac_bits << 1);
+    } else {
+      //denorm2norm
+      return (sign_bit << 31) | (1 << 23) | frac_bits;
+    }
+  }
+
+  if (!(exp_bits ^ close2inf_bits) || !(exp_bits ^ inf_bits)) {
+    //norm2inf
+    return (sign_bit << 31) | (inf_bits << 23);
+  }
+
+  //normal case
+  return uf + (1 << 23);
 }
 /* 
  * float_i2f - Return bit-level equivalent of expression (float) x
@@ -292,7 +321,44 @@ unsigned float_twice(unsigned uf) {
  *   Rating: 4
  */
 unsigned float_i2f(int x) {
-  return 2;
+  printf("------------------------\nDEBUG!\n");
+  int sign_bit;
+  if (!x) return 0;
+  if (x & (1 << 31)) {
+    //if x is Tmin, there is no +x
+    if (!(x ^ (1 << 31))) {
+      printf("Tmin!\n");
+      return (1<<31) | ((31 + (1<<7) - 1) << 23);
+    }
+    //normal case
+    sign_bit = 1;
+    x = (~x) + 1;
+  } else {
+    sign_bit = 0;
+  }
+  unsigned frac_bits = x;
+  int lead_zero_cnt = 0;
+  while (!(frac_bits & (1<<31))) {
+    frac_bits <<= 1;
+    lead_zero_cnt += 1;
+  }
+  frac_bits <<= 1;
+  frac_bits >>= 24;
+  printf("frac_bits: %x\n", frac_bits);
+  int num_frac_bits = 32 - lead_zero_cnt - 1;
+  printf("num_frac_bits: %d\n", num_frac_bits);
+
+  int exp_bits;
+  int bias = (1<<7) - 1;
+  if (!((num_frac_bits - 23) >> 31) ) {
+    //lead_zero_cnt < 9, with precision loss
+    exp_bits = (num_frac_bits - 23) + bias;
+    return (sign_bit << 31) | (exp_bits << 23) | frac_bits;
+  } else {
+    // no precision loss
+    return (sign_bit << 31) | frac_bits;
+  }
+
 }
 /* 
  * float_f2i - Return bit-level equivalent of expression (int) f
