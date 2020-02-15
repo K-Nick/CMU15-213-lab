@@ -226,7 +226,19 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+  // x - y <=0, delta = y - x >= 0
+  // special cases:
+  //  (~x) + 1 != -x (x == Tmin)
+  //  delta overflows
+  int delta = y + (~x) + 1;
+  int Tmin = 1 << 31;
+  // x = Tmin
+  int xIsTmin = !(x ^Tmin);
+  // overflow when (+) - (-) or (-) - (+)
+  if (((unsigned)x >> 31) ^ ((unsigned)y>>31)) {
+    return (unsigned)x>>31;
+  }
+  return !(delta & (1<<31));
 }
 //4
 /* 
@@ -285,6 +297,7 @@ unsigned float_twice(unsigned uf) {
   //extreme case: zero, denorm2denorm, denorm2norm, norm2inf, inf2inf
   // printf("INPUT:\t%.8x\n", uf);
   //zero
+
   if (!uf)  return 0U;
   unsigned sign_bit = uf >> 31;
   unsigned exp_bits = (uf << 1) >> 24;
@@ -294,18 +307,18 @@ unsigned float_twice(unsigned uf) {
   unsigned close2inf_bits = inf_bits ^ 1;
 
   if (!(exp_bits ^ denorm_bits)) {
-    if (!(frac_bits & (1 << 22))) {
-      //denorm2denorm
-      return (sign_bit << 31) | (exp_bits << 23) | (frac_bits << 1);
-    } else {
-      //denorm2norm
-      return (sign_bit << 31) | (1 << 23) | frac_bits;
-    }
+    //denorm2norm or denorm2denorm
+    return (sign_bit << 31) + (frac_bits << 1);
   }
 
-  if (!(exp_bits ^ close2inf_bits) || !(exp_bits ^ inf_bits)) {
+  if (!(exp_bits ^ close2inf_bits) || (!(exp_bits ^ inf_bits) && !frac_bits)) {
     //norm2inf
     return (sign_bit << 31) | (inf_bits << 23);
+  }
+
+  if (!(exp_bits ^ inf_bits) && frac_bits) {
+    //NaN
+    return uf;
   }
 
   //normal case
@@ -321,13 +334,11 @@ unsigned float_twice(unsigned uf) {
  *   Rating: 4
  */
 unsigned float_i2f(int x) {
-  printf("------------------------\nDEBUG!\n");
   int sign_bit;
   if (!x) return 0;
   if (x & (1 << 31)) {
     //if x is Tmin, there is no +x
     if (!(x ^ (1 << 31))) {
-      printf("Tmin!\n");
       return (1<<31) | ((31 + (1<<7) - 1) << 23);
     }
     //normal case
@@ -343,22 +354,31 @@ unsigned float_i2f(int x) {
     lead_zero_cnt += 1;
   }
   frac_bits <<= 1;
-  frac_bits >>= 24;
-  printf("frac_bits: %x\n", frac_bits);
-  int num_frac_bits = 32 - lead_zero_cnt - 1;
-  printf("num_frac_bits: %d\n", num_frac_bits);
+  //if there is loss, we have to do rounding!
+  //closer rounding
+  if ((frac_bits << 23) & (1<<31)) {
+    if (!(frac_bits << 24)) {
+      //exact middle, even rounding
+      frac_bits = (frac_bits >> 9);
+      if (frac_bits & 1) frac_bits += 1;
+    } else {
+      //upper side
+      frac_bits = (frac_bits >> 9) + 1;
+    }
+  } else {
+    //lower side
+    frac_bits = frac_bits >> 9;
+  }
+
+  //don't consider precision loss here because it's recorded to calculate E
+  int num_exact_frac_bits = 32 - lead_zero_cnt - 1;
 
   int exp_bits;
   int bias = (1<<7) - 1;
-  if (!((num_frac_bits - 23) >> 31) ) {
-    //lead_zero_cnt < 9, with precision loss
-    exp_bits = (num_frac_bits - 23) + bias;
-    return (sign_bit << 31) | (exp_bits << 23) | frac_bits;
-  } else {
-    // no precision loss
-    return (sign_bit << 31) | frac_bits;
-  }
+  //the loss of precision is not important, E is
 
+  exp_bits = num_exact_frac_bits + bias;
+  return (sign_bit << 31) + (exp_bits << 23) + frac_bits;
 }
 /* 
  * float_f2i - Return bit-level equivalent of expression (int) f
@@ -373,5 +393,34 @@ unsigned float_i2f(int x) {
  *   Rating: 4
  */
 int float_f2i(unsigned uf) {
-  return 2;
+  int sign;
+  if (uf >> 31) sign = -1; else sign = 1;
+  unsigned exp_bits = (uf << 1) >> 24;
+  unsigned frac_bits = (uf << 9) >> 9;
+  unsigned inf_bits = (unsigned)((1<<31) >> 8) >> 24;
+
+  int E = exp_bits - ((1<<7) - 1);
+  
+  if (E & (1<<31)) return 0;
+
+  if ((31-E) & (1<<31)) return 0x80000000u;
+
+  int int_part, dec_part = (frac_bits << 9);
+
+  if (!(E & (1 << 31))) {
+    if (!E) {
+      int_part = 1;
+    } else {
+      int_part = (1 << E) + (dec_part >> (32-E));
+      dec_part <<= E;
+    }
+  }
+  if (dec_part >> 31) {
+    return (int_part + 1) * sign;
+  } else {
+    return int_part * sign;
+  }
+
+
+
 }
